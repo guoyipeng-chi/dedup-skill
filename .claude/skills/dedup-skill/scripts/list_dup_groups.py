@@ -88,8 +88,9 @@ def _print_table(groups: list[dict[str, Any]], limit: int) -> None:
         print("no duplication groups found")
         return
 
-    print(f"{'ID':<5}{'LINES':<8}{'TOKENS':<8}{'OCC':<6}{'SCORE':<8}FILES")
-    print("-" * 80)
+    header = f"{'ID':<5}{'LINES':<8}{'TOKENS':<8}{'OCC':<6}{'SCORE':<8}FILES"
+    print(header)
+    print("-" * len(header))
     for item in selected:
         files = ", ".join(item["files"][:3])
         if len(item["files"]) > 3:
@@ -97,6 +98,12 @@ def _print_table(groups: list[dict[str, Any]], limit: int) -> None:
         print(
             f"{item['id']:<5}{item['lines']:<8}{item['tokens']:<8}{item['occurrence_count']:<6}{item['score']:<8}{files}"
         )
+        for idx, occ in enumerate(item.get("occurrences", []), start=1):
+            occ_path = occ.get("path", "")
+            start_line = occ.get("start_line", 1)
+            end_line = occ.get("end_line", start_line)
+            print(f"      - occ#{idx}: {occ_path}:{start_line}-{end_line}")
+        print()
 
 
 def main() -> int:
