@@ -40,6 +40,31 @@ description: "在当前代码仓识别并处理重复代码组：展示重复组
 - `scripts/list_dup_groups.py`：解析 XML 并输出重复组列表（含 score 排序）
 - `scripts/build_group_payload.py`：按用户选中的组导出包含行号与上下文的 payload
 
+### PMD 自动安装
+
+脚本默认开启 **PMD 自动安装**（首次运行时自动下载到 `.tools` 目录）：
+- 若 PMD 未找到，脚本会从 GitHub 官方发行版自动下载并安装
+- 后续运行不再下载，直接复用已安装版本
+- 用户无需预先配置 PMD，开箱即用
+
+处理选项：
+- `--no-auto-install-pmd`：禁用自动安装，找不到 PMD 时报错
+- `--pmd <path>`：手动指定 PMD 路径
+- `SET PMD_BIN=<path>`：设置环境变量
+
+**例子**
+
+```bash
+# 正常：首次自动安装，后续复用
+python scripts/scan_duplication.py <repo> --out-dir artifacts --min-tokens 40
+
+# 指定 PMD 路径
+python scripts/scan_duplication.py <repo> --pmd C:/path/to/pmd.bat
+
+# 关闭自动安装
+python scripts/scan_duplication.py <repo> --no-auto-install-pmd
+```
+
 标准命令（Windows PowerShell）：
 - `python scripts/scan_duplication.py <repo_path> --out-dir artifacts --min-tokens 40`
 - `python scripts/list_dup_groups.py artifacts/duplication.xml`

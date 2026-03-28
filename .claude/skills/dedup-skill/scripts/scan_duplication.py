@@ -5,11 +5,58 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
 
-def _find_pmd_bin(explicit: str | None, workspace: Path) -> str:
+def _auto_install_pmd(tools_dir: Path) -> str:
+    """Try to auto-install PMD from official GitHub release."""
+    print("[pmd] PMD not found. Attempting auto-install...")
+    pmd_version = "7.22.0"
+    download_url = f"https://github.com/pmd/pmd/releases/download/pmd_releases%2F{pmd_version}/pmd-bin-{pmd_version}.zip"
+    
+    try:
+        pmd_dir = tools_dir / f"pmd-bin-{pmd_version}"
+        if pmd_dir.exists():
+            print(f"[pmd] using existing installation at {pmd_dir}")
+            return _find_pmd_in_dir(pmd_dir)
+        
+        print(f"[pmd] downloading PMD {pmd_version} from GitHub...")
+        tools_dir.mkdir(parents=True, exist_ok=True)
+        zip_path = tools_dir / f"pmd-{pmd_version}.zip"
+        
+        urllib.request.urlretrieve(download_url, zip_path)
+        print(f"[pmd] download complete, extracting...")
+        
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(tools_dir)
+        
+        zip_path.unlink()
+        pmd_bin = _find_pmd_in_dir(pmd_dir)
+        print(f"[pmd] auto-install success: {pmd_bin}")
+        return pmd_bin
+    except Exception as e:
+        raise RuntimeError(
+            f"PMD auto-install failed: {e}\n"
+            f"解决方案：\n"
+            f"  1. 手动指定: python scan_duplication.py <repo> --pmd <pmd_path>\n"
+            f"  2. 环境变量: SET PMD_BIN=<pmd_path>\n"
+            f"  3. 禁用自动安装: python scan_duplication.py <repo> --no-auto-install-pmd\n"
+            f"  4. 手动下载: https://pmd.github.io/latest/pages/installation.html"
+        )
+
+
+def _find_pmd_in_dir(pmd_dir: Path) -> str:
+    """Find pmd executable in a PMD installation directory."""
+    for item in pmd_dir.glob("**/bin/*"):
+        if item.name.lower() in {"pmd", "pmd.bat", "pmd.cmd"}:
+            return str(item)
+    raise FileNotFoundError(f"PMD executable not found in {pmd_dir}")
+
+
+def _find_pmd_bin(explicit: str | None, workspace: Path, auto_install: bool = True) -> str:
     candidates: list[Path] = []
 
     if explicit:
@@ -33,8 +80,17 @@ def _find_pmd_bin(explicit: str | None, workspace: Path) -> str:
         if candidate.exists() and candidate.is_file():
             return str(candidate)
 
+    if auto_install:
+        return _auto_install_pmd(workspace / ".tools")
+    
     raise FileNotFoundError(
-        "未找到 PMD 可执行文件。请通过 --pmd 指定，或设置 PMD_BIN，或将 pmd 放到 PATH/.tools。"
+        "未找到 PMD 可执行文件。\n"
+        "解决方案：\n"
+        "  1. 手动指定路径:       python scan_duplication.py <repo> --pmd <pmd_path>\n"
+        "  2. 设置环境变量:       SET PMD_BIN=<pmd_path>\n"
+        "  3. 启用自动安装:       python scan_duplication.py <repo>\n"
+        "  4. 禁用自动安装:       python scan_duplication.py <repo> --no-auto-install-pmd\n"
+        "  5. 手动下载安装:       https://pmd.github.io/latest/pages/installation.html"
     )
 
 
@@ -47,6 +103,7 @@ def main() -> int:
     parser.add_argument("--language", type=str, default="cpp", help="CPD language (cpp, java, etc.)")
     parser.add_argument("--pmd", type=str, default=None, help="Path to pmd executable")
     parser.add_argument("--encoding", type=str, default="utf-8", help="Source encoding")
+    parser.add_argument("--no-auto-install-pmd", action="store_true", help="Disable automatic PMD installation")
     args = parser.parse_args()
 
     repo = args.repo.resolve()
@@ -60,7 +117,7 @@ def main() -> int:
     out_xml = out_dir / args.out_file
     out_xml_with_ts = out_dir / f"duplication_{timestamp}.xml"
 
-    pmd_bin = _find_pmd_bin(args.pmd, Path.cwd())
+    pmd_bin = _find_pmd_bin(args.pmd, Path.cwd(), auto_install=not args.no_auto_install_pmd)
 
     base = [
         pmd_bin,
