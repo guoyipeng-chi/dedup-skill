@@ -62,13 +62,11 @@ def main() -> int:
 
     pmd_bin = _find_pmd_bin(args.pmd, Path.cwd())
 
-    cmd = [
+    base = [
         pmd_bin,
         "cpd",
         "--minimum-tokens",
         str(args.min_tokens),
-        "--files",
-        str(repo),
         "--format",
         "xml",
         "--language",
@@ -78,15 +76,33 @@ def main() -> int:
         "--skip-lexical-errors",
     ]
 
-    print("[scan] running:", " ".join(cmd))
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    cmd_variants = [
+        base + ["--files", str(repo)],
+        base + ["--dir", str(repo)],
+    ]
 
-    if proc.returncode != 0:
-        sys.stderr.write(proc.stderr or "")
-        sys.stderr.write(proc.stdout or "")
-        raise SystemExit(proc.returncode)
+    proc = None
+    xml_text = ""
+    for idx, cmd in enumerate(cmd_variants, start=1):
+        print(f"[scan] running variant {idx}:", " ".join(cmd))
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        candidate = (proc.stdout or "").strip()
+        if candidate.startswith("<?xml") or "<pmd-cpd" in candidate:
+            xml_text = candidate
+            break
+        if proc.returncode == 0:
+            xml_text = candidate
+            break
 
-    xml_text = proc.stdout.strip()
+    if proc is None:
+        raise SystemExit(1)
+
+    if proc.returncode != 0 and not xml_text:
+        if proc is not None:
+            sys.stderr.write(proc.stderr or "")
+            sys.stderr.write(proc.stdout or "")
+            raise SystemExit(proc.returncode)
+
     if not xml_text:
         raise SystemExit("CPD 输出为空，未生成 duplication XML。")
 
