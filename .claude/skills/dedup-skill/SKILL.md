@@ -79,13 +79,25 @@ description: "在当前代码仓识别并处理重复代码组：展示重复组
 输出给用户时默认按“影响度”排序：
 - 推荐分数 = occurrence_count × lines
 
+### Step 2.5 - 显示模式选择
+
+在展示重复组前，询问用户显示与处理的方式。必须调用 `ask_questions` 收集：
+- 显示模式（单选）：
+  - `exact-only`：仅显示完全雷同的重复组（代码片段逐字节相同）
+  - `all`：显示所有扫描出的重复组（默认）
+  - `table-only`：仅打印重复组表格，然后终止 skill 执行（不进行后续合并）
+
+根据用户选择，调用 `scripts/list_dup_groups.py`：
+- 若选 `exact-only`：加 `--exact-only` 参数
+- 若选 `table-only`：加 `--table-only` 参数（脚本会自动停止）
+- 若选 `all`：正常调用（无额外参数）
+
 ### Step 3 - 询问用户选择处理组
+
+**注意**：仅当 Step 2.5 未选 `table-only` 时执行本步。
 
 必须调用 `ask_questions`，至少收集：
 - 要处理的 group id（支持单选或多选）
-- 处理模式：
-	- `exact`：优先处理完全相同重复
-	- `all`：所有重复组
 
 默认策略：
 - 未明确要求批量时，一次处理 1 组
@@ -142,17 +154,24 @@ description: "在当前代码仓识别并处理重复代码组：展示重复组
 - `file_search` / `list_dir`：补充路径信息
 - `run_in_terminal`：调用 `scripts/scan_duplication.py`
 
-2) 用户交互
-- `ask_questions`：选择 group id 与处理模式
-- `run_in_terminal`：调用 `scripts/list_dup_groups.py` 展示候选组
-- `run_in_terminal`：调用 `scripts/build_group_payload.py` 生成定位输入
+2) 第一个用户交互 (Step 2.5 - 显示模式选择)
+- `ask_questions`：询问用户 exact-only / all / table-only
+- 根据选择，调用 `scripts/list_dup_groups.py`：
+  - exact-only: `python scripts/list_dup_groups.py artifacts/duplication.xml --exact-only --repo <repo_path>`
+  - all (default): `python scripts/list_dup_groups.py artifacts/duplication.xml --repo <repo_path>`
+  - table-only: `python scripts/list_dup_groups.py artifacts/duplication.xml --table-only --repo <repo_path>` (agent会自动停止，不培进后续 Step 3)
 
-3) 定位与修改
+3) 第二个用户交互 (Step 3 - 选择处理组)
+- 仅当 table-only 未被选中时执行
+- `ask_questions`：选择 group id
+- `run_in_terminal`：调用 `scripts/build_group_payload.py artifacts/duplication.xml --repo <repo_path> --groups <id> --out artifacts/selected_groups_payload.json`
+
+4) 定位与修改
 - `read_file`：读取 occurrence 与上下文
-- `apply_patch`：应用合并修改
+- `multi_replace_string_in_file` 或 `replace_string_in_file`：应用合并修改
 
-4) 验证
-- `get_errors`
+5) 验证
+- `get_errors`：检查改动后错误
 - `run_in_terminal`（可选）：执行最小相关测试/构建
 
 ## 输出风格建议

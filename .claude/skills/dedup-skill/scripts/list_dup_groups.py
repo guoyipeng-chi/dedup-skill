@@ -11,6 +11,33 @@ def _tag_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
+def _is_exact_duplicate(group: dict[str, Any], repo: Path) -> bool:
+    """Check if all occurrences in a group are byte-for-byte identical."""
+    fragments: list[str] = []
+    for occ in group.get("occurrences", []):
+        occ_path_str = occ.get("path", "")
+        if occ_path_str.startswith(str(repo)):
+            occ_path = Path(occ_path_str)
+        else:
+            occ_path = repo / occ_path_str
+        
+        if not occ_path.exists():
+            return False
+        try:
+            content = occ_path.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            start = max(0, occ.get("start_line", 1) - 1)
+            end = min(len(lines), occ.get("end_line", 1))
+            snippet = "\n".join(lines[start:end]).strip()
+            fragments.append(snippet)
+        except Exception:
+            return False
+    
+    if len(fragments) <= 1:
+        return True
+    return all(item == fragments[0] for item in fragments[1:])
+
+
 def parse_cpd_xml(xml_path: Path) -> list[dict[str, Any]]:
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -76,7 +103,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="List CPD duplication groups")
     parser.add_argument("xml", type=Path, help="duplication.xml path")
     parser.add_argument("--json", action="store_true", help="Output full json")
+    parser.add_argument("--exact-only", action="store_true", help="Filter to show only exact duplicates")
+    parser.add_argument("--table-only", action="store_true", help="Print table and exit (no further action)")
     parser.add_argument("--limit", type=int, default=30, help="Table row limit, 0 means all")
+    parser.add_argument("--repo", type=Path, default=Path("."), help="Repository root for exact duplicate detection")
     args = parser.parse_args()
 
     xml_path = args.xml.resolve()
@@ -84,11 +114,26 @@ def main() -> int:
         raise SystemExit(f"xml not found: {xml_path}")
 
     groups = parse_cpd_xml(xml_path)
+    
+    repo = args.repo.resolve()
+    if args.exact_only:
+        filtered = []
+        for group in groups:
+            if _is_exact_duplicate(group, repo):
+                filtered.append(group)
+        groups = filtered
+        if not groups:
+            print("[info] no exact duplicate groups found")
+            return 0
 
     if args.json:
         print(json.dumps(groups, ensure_ascii=False, indent=2))
     else:
         _print_table(groups, args.limit)
+    
+    if args.table_only:
+        print("\n[info] table-only mode: stopping execution without further dedup action")
+        return 0
 
     return 0
 
